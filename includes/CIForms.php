@@ -186,9 +186,10 @@ class CIForms {
 				unset( $body[$key] );
 			}
 		}
+		$paging = ( count( $subsections ) && !empty( $named_parameters['paging'] ) && $named_parameters['paging'] !== 'false' );
 		$output = '';
-		$url = Title::newFromText( 'Special:CIFormsSubmit' )->getLocalURL();
 
+		$url = SpecialPage::getTitleFor( 'CIFormsSubmit' )->getLocalURL();
 		// https://www.accessibility-developer-guide.com/examples/forms/required/
 		$output .= '<svg style="display:none" id="definition" version="1.1" xmlns="http://www.w3.org/2000/svg"><defs><symbol id="required" viewbox="0 0 128 128"><g><path d="M110.1,16.4L75.8,56.8l0.3,1l50.6-10.2v32.2l-50.9-8.9l-0.3,1l34.7,39.1l-28.3,16.5L63.7,78.2L63,78.5   l-18.5,49L17.2,111l34.1-39.8v-0.6l-50,9.2V47.6l49.3,9.9l0.3-0.6L17.2,16.7L45.5,0.5l17.8,48.7H64L82.1,0.5L110.1,16.4z"></path></g></symbol></defs></svg>';
 
@@ -212,7 +213,7 @@ class CIForms {
 			$output .= self::ci_form_section_process( $title, $body );
 		}
 		if ( count( $subsections ) ) {
-			if ( !empty( $named_parameters['paging'] ) && $named_parameters['paging'] !== 'false' ) {
+			if ( $paging ) {
 				// we cannot set the visibility in the section's container
 				// itself, because the nested parser function is rendered
 				// independently before the container
@@ -253,7 +254,7 @@ class CIForms {
 		}
 		$output .= self::hidden_input( 'form_pagename', $title->getText() );
 		$output .= self::hidden_input( 'form_pageid', $title->getArticleID() );
-		if ( empty( $named_parameters['paging'] ) || $named_parameters['paging'] === 'false' ) {
+		if ( !$paging ) {
 			$output .= '<input class="ci_form_input_submit" type="submit" value="' . ( !empty( $named_parameters['submit text'] ) ? htmlspecialchars( $named_parameters['submit text'] ) : wfMessage( 'ci-forms-submit' )->text() ) . '">';
 		} else {
 			$output .= '<div style="text-align:right">';
@@ -452,12 +453,34 @@ class CIForms {
 		}
 		$output .= self::hidden_input( $unique_id . '_section_type', $named_parameters['type'] );
 		$output .= self::hidden_input( $unique_id . '_section_title', $named_parameters['title'] );
+
+		// @todo add required asterisk here if the section
+		// has only one field and label and placeholder are empty
 		if ( !empty( $named_parameters['title'] ) ) {
 			$output .= '<div class="ci_form_section_title">' . $named_parameters['title'] . '</div>';
 		}
 		switch ( $named_parameters['type'] ) {
 			case 'inputs':
 			case 'inputs responsive':
+				$placeholders = 0;
+				$labels = 0;
+				// @todo, reuse data for the loop below
+				foreach ( $body as $value ) {
+					preg_replace_callback( '/([^\[\]]*)\[\s*([^\[\]]*)\s*\]\s*(\*)?/',
+						function ( $matches ) use ( &$placeholders, &$labels ) {
+							$label = trim( $matches[1] );
+							list( $input_type, $placeholder, $input_options ) =
+								self::ci_form_parse_input_symbol( $matches[2] ) + [ null, "", null ];
+							if ( !empty( $placeholder ) ) {
+								$placeholders++;
+							}
+							if ( !empty( $label ) ) {
+								$labels++;
+							}
+						
+					}, $value );
+				}
+
 				$n = 0;
 				foreach ( $body as $value ) {
 					$output .= '<div class="ci_form_section_inputs_row">';
@@ -485,7 +508,7 @@ class CIForms {
 					$label_exists = !empty( implode( '', $match_all[1] ) );
 					$i = 0;
 					$output .= preg_replace_callback( '/([^\[\]]*)\[\s*([^\[\]]*)\s*\]\s*(\*)?/',
-						function ( $matches ) use ( $named_parameters, &$i, $n, $unique_id, $inputs_per_row, $label_exists ) {
+						function ( $matches ) use ( $named_parameters, &$i, $n, $unique_id, $inputs_per_row, $label_exists, $placeholders, $labels ) {
 							$replacement = '';
 							$replacement .= '<div class="ci_form_section_inputs_inner_col" style="float:left;width:' . ( 100 / $inputs_per_row ) . '%">';
 							list( $input_type, $placeholder, $input_options ) =
@@ -496,6 +519,10 @@ class CIForms {
 							$label = null;
 							if ( $named_parameters['type'] != 'inputs responsive' ) {
 								$label = trim( $matches[1] );
+								if ( empty( $label ) && $required && $labels > $placeholders ) {
+									$label = wfMessage( 'ci-forms-field-required' )->text();
+								}
+
 								if ( !empty( $label ) ) {
 									$replacement .= '<label>' . $label . ( $required ? '<span class="ci_form_required_symbol" aria-hidden="true">&nbsp;*</span>' : '' ) . '</label>';
 								} elseif ( $label_exists ) {
@@ -507,7 +534,7 @@ class CIForms {
 							if ( $named_parameters['type'] != 'inputs responsive' || $inputs_per_row > 1 ) {
 								if ( empty( $label ) && $required ) {
 									// @phan-suppress-next-line PhanRedundantCondition
-									$placeholder .= ( !empty( $placeholder ) ? ' ' : '' ) . '*';
+									$placeholder .= ( !empty( $placeholder ) ? '' : wfMessage( 'ci-forms-field-required' )->text() ) . ' *';
 								}
 							}
 
