@@ -28,6 +28,10 @@ if ( is_readable( __DIR__ . '/../../vendor/autoload.php' ) ) {
 }
 
 use MediaWiki\MediaWikiServices;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Worksheet\Table;
+use PhpOffice\PhpSpreadsheet\Worksheet\Table\TableStyle;
 use Wikimedia\Rdbms\FakeResultWrapper;
 use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\Rdbms\IResultWrapper;
@@ -88,12 +92,13 @@ class CIFormsManage extends QueryPage {
 		$export = $request->getVal( 'export' );
 
 		if ( !empty( $export ) ) {
-			$this->export( $export );
+			$this->export( $export, $request->getVal( 'format' ) );
 		}
 
 		$out = $this->getOutput();
 		$out->addModuleStyles( $this->getModuleStyles() );
 		$out->enableOOUI();
+		$out->addModules( 'ext.CIForms.manage' );
 
 		# this can be used to filter the search
 		/*
@@ -328,8 +333,9 @@ class CIFormsManage extends QueryPage {
 
 	/**
 	 * @param string $submission_id
+	 * @param string $format
 	 */
-	private function export( $submission_id ) {
+	private function export( $submission_id, $format ) {
 		$dbr = wfGetDB( DB_REPLICA );
 		$conds = [ 'id' => $submission_id ];
 
@@ -360,39 +366,33 @@ class CIFormsManage extends QueryPage {
 		// this will create $this->headers
 		$this->openList( 0 );
 
-		ob_clean();
-
-		$output = fopen( "php://output", 'w' );
-
-		if ( $output === false ) {
-			exit( "Can't open php://output" );
-		}
-
 		if ( array_key_last( $this->headers ) == 'pdf' ) {
 			array_pop( $this->headers );
 		}
 
-		fputcsv( $output, $this->headers );
+		$headers = array_map( static function( $value ) {
+			return html_entity_decode( $value );
+		}, $this->headers );
 
-		unset( $this->headers['entry'], $this->headers['username'], $this->headers['submission_date'] );
+		$headers_ = $headers;
+		unset( $headers_['entry'], $headers_['username'], $headers_['submission_date'] );
 
+		$data = [];
 		$n = 0;
 		foreach ( $res as $key => $row ) {
 			$n++;
 			$row = (array)$row;
 
-			array_walk( $this->headers, static function ( &$value, $key ) use( $row ) {
-				$value = ( array_key_exists( $key, $row ) ? $row[$key] : "" );
+			$values = [];
+			array_walk( $headers_, static function ( $value, $key ) use( $row, &$values ) {
+				$values[] = ( array_key_exists( $key, $row ) ? $row[$key] : "" );
 			} );
 
 			// php < 7.4
-			$csv_line = [ $n, $row['username'] ];
-			$csv_line = array_merge( $csv_line, array_values( $this->headers ) );
-			$csv_line[] = $row['created_at'];
-			fputcsv( $output, $csv_line );
-
+			$data[] = array_merge( [ $n, $row['username'] ], $values, [ $row['created_at'] ] );
+			
 			// php 7.4
-			// fputcsv( $output, [ $n, $row['username'], ...array_values( $row, $this->headers ),  $row['created_at'] ] );
+			// $data[] = [ $n, $row['username'], ...$values,  $row['created_at'] ];
 		}
 
 		$submission_date = htmlspecialchars(
@@ -402,13 +402,85 @@ class CIFormsManage extends QueryPage {
 			)
 		);
 
+		$filename = $row['title'] . ' - ' . $submission_date;
+		$headers = array_values( $headers );
+
+		switch ( $format ) {
+			case 'csv' :
+				$this->exportCsv( $headers, $data, $filename );
+			break;
+
+			case 'excel' :
+				$this->exportExcel( $headers, $data, $filename );
+			break;
+
+		}
+
+	}
+
+	/**
+	 * @param array $headers
+	 * @param array $data
+	 * @param string $filename
+	 */
+	private function exportCsv( $headers, $data, $filename ) {
+		ob_clean();
+
+		$output = fopen( "php://output", 'w' );
+
+		if ( $output === false ) {
+			exit( "Can't open php://output" );
+		}
+
+		fputcsv( $output, $headers );
+
+		foreach ( $data as $row ) {
+			fputcsv( $output, $row );	
+		}
+
 		header( 'Content-Type: application/csv' );
 		header( 'Content-Transfer-Encoding: Binary' );
-		header( 'Content-disposition: attachment; filename="' . $row['title'] . ' - ' . $submission_date . '.csv"' );
+		header( 'Content-disposition: attachment; filename="' . $filename . '.csv"' );
 
 		// ob_clean();
 
 		fclose( $output ) || die( "Can't close php://output" );
+		exit();
+	}
+
+	/**
+	 * @see https://github.com/PHPOffice/PhpSpreadsheet/blob/master/samples/Table/01_Table.php
+	 * @param array $res
+	 * @param array $headers
+	 * @param string $filename
+	 */
+	private function exportExcel( $headers, $data, $filename ) {
+		if ( !class_exists( 'PhpOffice\PhpSpreadsheet\Spreadsheet' ) ) {
+			echo 'PhpOffice not installed';
+			exit();
+		}
+
+		$spreadsheet = new Spreadsheet();
+		$sheet = $spreadsheet->getActiveSheet();
+
+		foreach($headers as $key => $value) {
+			// $columnIndex, $row, $value
+			$sheet->setCellValueByColumnAndRow( $key + 1, 1, $value );
+		}
+
+		foreach( $data as $key => $value ) {
+			foreach ($value as $k => $v) {
+ 				$sheet->setCellValueByColumnAndRow( $k + 1, ( $key + 1 + 1 ), $v );
+			}
+		}
+		
+		$writer = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter( $spreadsheet, 'Xlsx' );
+		$writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx( $spreadsheet );
+
+		header('Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' );
+		header( 'Content-disposition: attachment; filename="' . $filename . '.xlsx"' );
+		$writer->save( 'php://output' );
+
 		exit();
 	}
 
@@ -560,7 +632,7 @@ class CIFormsManage extends QueryPage {
 		foreach ( $res as $key => $row ) {
 			if ( !empty( $row->data ) ) {
 				$data = json_decode( $row->data, true );
-				$valid_results[] = array_merge( (array)$row, $this->parseFormData( $data, !$export ) );
+				$valid_results[] = array_merge( (array)$row, $this->parseFormData( $data, false, !$export ) );
 
 				if ( !$export && empty( $row->shown ) ) {
 					$date = date( 'Y-m-d H:i:s' );
@@ -654,11 +726,12 @@ AND title = ' . $dbr->addQuotes( $this->form_title )
 				$headers = [];
 				$headers['entry'] = $this->msg( 'ci-forms-manage-pager-header-entry' )->text();
 				$headers['username'] = $this->msg( 'ci-forms-manage-pager-header-username' )->text();
-				$keys = array_keys( $this->parseFormData( $data ) );
 
-				foreach ( $keys as $val ) {
-					$headers[$val] = $val;
-				}
+				// @todo, use a better solution rather than parse the
+				// row two times
+				$keys = array_keys( $this->parseFormData( $data, false ) );
+				$values = array_keys( $this->parseFormData( $data, true ) );
+				$headers = array_merge( $headers, array_combine( $keys, $values ) );
 
 				$headers['submission_date'] = $this->msg( 'ci-forms-manage-pager-header-submission_date' )->text();
 
@@ -727,7 +800,7 @@ AND title = ' . $dbr->addQuotes( $this->form_title )
 	 * @return string[]
 	 */
 	public function getModuleStyles() {
-		return [ 'mediawiki.pager.tablePager', 'oojs-ui.styles.icons-movement' ];
+		return [ 'mediawiki.pager.tablePager', 'oojs-ui.styles.icons-movement', 'oojs-ui.styles.icons-layout' ];
 	}
 
 	/**
@@ -786,14 +859,30 @@ AND title = ' . $dbr->addQuotes( $this->form_title )
 								'infusable' => true,
 								'flags' => [ 'progressive', 'primary' ]
 							]
+						// *** this uses ButtonMenuSelectWidget client-side
+						// @see https://gerrit.wikimedia.org/r/plugins/gitiles/oojs/ui/+/refs/heads/master/demos/pages/widgets.js
 						) . new OOUI\ButtonWidget(
 							[
-								'href' => wfAppendQuery( $url, 'export=' . $result['id'] ),
+								"classes" => [ "ciforms-manage-button-export" ],
+								"icon" => 'menu',
+								'href' => wfAppendQuery( $url, 'export=' . $result['id'] . '&format=csv' ),
 								'label' => $this->msg( 'ci-forms-manage-pager-button-export' )->text(),
 								'infusable' => true,
 								'flags' => [ 'progressive', 'primary' ]
 							]
-						);
+						)
+
+/*
+				 . new OOUI\ButtonWidget(
+							[
+								'href' => wfAppendQuery( $url, 'export=' . $result['id'] . '&format=excel' ),
+								'label' => $this->msg( 'ci-forms-manage-pager-button-export-excel' )->text(),
+								'infusable' => true,
+								'flags' => [ 'progressive', 'primary' ]
+							]
+						)
+*/
+						;
 						break;
 					default:
 						$formatted = $result[$key];
@@ -826,8 +915,8 @@ AND title = ' . $dbr->addQuotes( $this->form_title )
 						);
 						break;
 					default:
-						if ( !empty( $result[$value] ) ) {
-							$formatted = $result[$value];
+						if ( !empty( $result[$key] ) ) {
+							$formatted = $result[$key];
 						}
 				}
 			}
@@ -845,16 +934,46 @@ AND title = ' . $dbr->addQuotes( $this->form_title )
 	}
 
 	/**
+	 * @param string $str
+	 * @param int $length
+	 * @return string
+	 */
+	private static function trimSectionTitle( $str, $length = 30 ) {
+		$decoded = html_entity_decode( $str );
+		if ( strlen( $decoded ) <= $length ) {
+			return $str;
+		}
+
+		$str = substr( $decoded, 0, $length - 3 );
+		return htmlentities( $str ) . '...';
+	}
+
+	/**
+	 * @param array $arr
+	 * @return string|null
+	 */
+	private static function fallbackNonEmpty( $arr, $heading ) {
+		if ( !$heading || ( array_key_exists( 'wgCIFormsSubmissionsTableForceInputNamesInHeading', $GLOBALS ) && $GLOBALS['wgCIFormsSubmissionsTableForceInputNamesInHeading'] ) ) {
+			return array_pop( $arr );
+		}
+
+		$ret = null;
+		while ( empty( $ret ) ) {
+			$ret = array_shift( $arr );
+		}
+		return $ret;
+	}
+
+	/**
 	 * @param array $data
 	 * @param bool $html
 	 * @return array
 	 */
-	private function parseFormData( $data, $html = true ) {
+	private function parseFormData( $data, $heading, $html = true ) {
 		$array = [];
 		$output = [];
 
 		foreach ( $data['sections'] as $section ) {
-
 			// *** this could be determined by a bug
 			// now solved
 			if ( empty( $section['type'] ) ) {
@@ -869,18 +988,20 @@ AND title = ' . $dbr->addQuotes( $this->form_title )
 						$main_label = "";
 						if ( $section['type'] == 'inputs responsive' ) {
 							preg_match( "/^\s*([^\[\]]+)\s*(.+)\s*$/", $value['label'], $match );
-							$main_label = $match[1];	// currently not used
-							$value['label'] = $match[2];
-						}
+							$main_label = $match[1];
+							$label = $match[2];
 
+						} else {
+							$label = $value['label'];
+						}
 						$i = 0;
 
 						// alternatively use preg_split
 						// @phan-suppress-next-line PhanPluginUseReturnValueInternalKnown
 						preg_replace_callback(
 							'/([^\[\]]*)\[([^\[\]]*)\]\s*(\*)?/',
-							static function ( $matches ) use ( &$i, $value, &$array, $html, $main_label, $section ) {
-								$label = $matches[1];	// currently not used
+							static function ( $matches ) use ( &$i, $value, &$array, $html, $main_label, $section, $heading ) {
+								$label = $matches[1];
 
 								list( $input_type, $placeholder, $input_options ) = CIForms::ci_form_parse_input_symbol( $matches[2] ) + [ null, null, null ];
 
@@ -889,10 +1010,12 @@ AND title = ' . $dbr->addQuotes( $this->form_title )
 									$input_type = 'text input';
 								}
 
-								$array[] = [ $input_type, ( $value['inputs'] ? $value['inputs'][$i] : "" ) ];
+								$fallbackLabel = self::fallbackNonEmpty( [ $label, $placeholder, $main_label, $input_type ], $heading );
+
+								$array[] = [ $fallbackLabel, ( $value['inputs'] ? $value['inputs'][$i] : "" ) ];
 								$i++;
 							},
-							$value['label']
+							$label
 						);
 					}
 					break;
@@ -904,12 +1027,14 @@ AND title = ' . $dbr->addQuotes( $this->form_title )
 							$value_[] = ( $key + 1 ) . ( !empty( $value['inputs'] ) ? ' (' . implode( ' &ndash; ', $value['inputs'] ) . ')' : '' );
 						}
 					}
-					$array[] = [ 'multiple choice', implode( ( $html ? '<br />' : "\n" ), $value_ ) ];
+
+					$fallbackLabel = self::fallbackNonEmpty( [ self::trimSectionTitle( $section['title'] ), $section['type'] ], $heading );
+
+					$array[] = [ $fallbackLabel, implode( ( $html ? '<br />' : "\n" ), $value_ ) ];
 					break;
 				case 'cloze test':
 					$value_ = [];
 					foreach ( $section['items'] as $key => $value ) {
-
 						$label = trim( $value['label'] );
 						$example = ( $label[0] == '*' );
 
@@ -924,13 +1049,14 @@ AND title = ' . $dbr->addQuotes( $this->form_title )
 
 					}
 					$list_type_ordered = in_array( $section['list-style'], CIForms::$ordered_styles );
+					$fallbackLabel = self::fallbackNonEmpty( [ self::trimSectionTitle( $section['title'] ), $section['type'] ], $heading );
 
 					if ( $html ) {
-						$array[] = [ ( !empty( $section['title'] ) ? $section['title'] : 'cloze test' ), '<' . ( !$list_type_ordered ? 'ul' : 'ol' ) . ' style="list-style:' . $section['list-style'] . '">' . implode( $value_ ) . '</' . ( !$list_type_ordered ? 'ul' : 'ol' ) . '>' ];
+						$array[] = [ $fallbackLabel, '<' . ( !$list_type_ordered ? 'ul' : 'ol' ) . ' style="list-style:' . $section['list-style'] . '">' . implode( $value_ ) . '</' . ( !$list_type_ordered ? 'ul' : 'ol' ) . '>' ];
 
 					} else {
 						$i = 0;
-						$array[] = [ 'cloze test', implode( "\n", !$list_type_ordered ? $value_ : array_map( static function ( $value ) use ( &$i ) {
+						$array[] = [ $fallbackLabel, implode( "\n", !$list_type_ordered ? $value_ : array_map( static function ( $value ) use ( &$i ) {
 							return ( ++$i ) . ". " . $value;
 						}, $value_ ) ) ];
 					}
