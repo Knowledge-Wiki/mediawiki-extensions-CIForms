@@ -454,96 +454,144 @@ class CIForms {
 		$output .= self::hidden_input( $unique_id . '_section_type', $named_parameters['type'] );
 		$output .= self::hidden_input( $unique_id . '_section_title', $named_parameters['title'] );
 
-		// @todo add required asterisk here if the section
+		// do some "look-forward" processing
+		if ( $named_parameters['type'] === 'inputs' || $named_parameters['type'] === 'inputs responsive' ) {
+			$parsed = [];
+			$placeholders = 0;
+			$labels = 0;
+			foreach ( $body as $value ) {
+				$main_label = null;
+				if ( $named_parameters['type'] == 'inputs responsive' ) {
+					preg_match( "/^\s*([^\[\]]+)\s*(.+)\s*$/", $value, $match );
+					if ( $match ) {
+						$value = $match[2];
+						$main_label = trim( $match[1] );
+					}
+				}
+
+				$inputs = [];
+				$has_required = false;
+				$has_labels = false;
+				preg_match_all( '/([^\[\]]*)\[\s*([^\[\]]*)\s*\]\s*(\*)?/', $value, $matches, PREG_SET_ORDER );
+
+				foreach( $matches as $match ) {
+					$label = trim( $match[1] );
+					$required = !empty( $match[3] );
+					list( $input_type, $placeholder, $input_options ) =
+						self::ci_form_parse_input_symbol( $match[2] ) + [ null, "", null ];
+	
+					$inputs[] = [
+						'required' => $required,
+						'label' => $label,
+						'input_type' => $input_type,
+						'placeholder' => $placeholder,
+						'input_options' => $input_options
+					];
+
+					if ( !empty( $placeholder ) ) {
+						$placeholders++;
+					}
+					if ( !empty( $label ) ) {
+						$labels++;
+						$has_labels = true;
+					}
+
+					if ( $required ) {
+						$has_required = true;
+					}
+
+				};
+
+				$parsed[] = [
+					'main_label' => $main_label,
+					'value' => $value,
+					'inputs' => $inputs,
+					'has_required' => $has_required,
+					'has_labels' => $has_labels,
+					
+				];
+			}
+		}
+
+		$required_html = '<span class="ci_form_required_symbol" aria-hidden="true">&nbsp;*</span>';
+
+		// add required asterisk here if the section
 		// has only one field and label and placeholder are empty
+		$required_rendered = false;
 		if ( !empty( $named_parameters['title'] ) ) {
-			$output .= '<div class="ci_form_section_title">' . $named_parameters['title'] . '</div>';
+			$output .= '<div class="ci_form_section_title">' . $named_parameters['title'];
+
+			if ( count( $body ) === 1 && $placeholders === 0 && $labels === 0 ) {
+				$required_rendered = true;
+				$output .= $required_html;
+			}
+
+			$output .= '</div>';
 		}
 		switch ( $named_parameters['type'] ) {
 			case 'inputs':
 			case 'inputs responsive':
-				$placeholders = 0;
-				$labels = 0;
-				// @todo, reuse data for the loop below
-				foreach ( $body as $value ) {
-					preg_replace_callback( '/([^\[\]]*)\[\s*([^\[\]]*)\s*\]\s*(\*)?/',
-						function ( $matches ) use ( &$placeholders, &$labels ) {
-							$label = trim( $matches[1] );
-							list( $input_type, $placeholder, $input_options ) =
-								self::ci_form_parse_input_symbol( $matches[2] ) + [ null, "", null ];
-							if ( !empty( $placeholder ) ) {
-								$placeholders++;
-							}
-							if ( !empty( $label ) ) {
-								$labels++;
-							}
-						
-					}, $value );
-				}
 
-				$n = 0;
-				foreach ( $body as $value ) {
+				foreach ( $body as $key => $value ) {
+					$parsed_row = $parsed[$key];
 					$output .= '<div class="ci_form_section_inputs_row">';
-					$output .= self::hidden_input( $unique_id . '_items_' . $n . '_label', $value );
+					$output .= self::hidden_input( $unique_id . '_items_' . $key . '_label', $value );
+
 					if ( $named_parameters['type'] == 'inputs responsive' ) {
-						preg_match( "/^\s*([^\[\]]+)\s*(.+)\s*$/", $value, $match );
-						if ( $match ) {
-							$value = $match[2];
+						if ( $parsed_row['main_label'] ) {
 							$output .= '<div class="ci_form_section_inputs_col-25">';
-							$output .= trim( $match[1] );
+							$output .= $parsed_row['main_label'];
 						} else {
 							$output .= '<div class="ci_form_section_inputs_col">';
 						}
-					}
-					preg_match_all( '/([^\[\]]*)\[\s*([^\[\]]*)\s*\]\s*(\*)?/', $value, $match_all );
 
-					if ( $named_parameters['type'] == 'inputs responsive' ) {
-						if ( count( $match_all[3] ) == 1 && !empty( $match_all[3][0] ) ) {
-							$output .= '<span class="ci_form_required_symbol" aria-hidden="true">&nbsp;*</span>';
+						if ( $parsed_row['has_required'] ) {
+							$output .= $required_html;
 						}
-						$output .= '</div><div class="ci_form_section_inputs_col-75">';
+						$output .= '</div><div class="ci_form_section_inputs_col-75">';	
 					}
 
-					$inputs_per_row = count( $match_all[0] );
-					$label_exists = !empty( implode( '', $match_all[1] ) );
+					$inputs_per_row = count( $parsed_row['inputs'] );
 					$i = 0;
 					$output .= preg_replace_callback( '/([^\[\]]*)\[\s*([^\[\]]*)\s*\]\s*(\*)?/',
-						function ( $matches ) use ( $named_parameters, &$i, $n, $unique_id, $inputs_per_row, $label_exists, $placeholders, $labels ) {
+						function ( $matches ) use ( $named_parameters, &$i, $key, $parsed_row, $unique_id, $inputs_per_row, $placeholders, $labels, $required_html, $required_rendered ) {
+							$input = $parsed_row['inputs'][$i];
 							$replacement = '';
 							$replacement .= '<div class="ci_form_section_inputs_inner_col" style="float:left;width:' . ( 100 / $inputs_per_row ) . '%">';
-							list( $input_type, $placeholder, $input_options ) =
-								self::ci_form_parse_input_symbol( $matches[2] ) + [ null, "", null ];
-							$required =
-								( !empty( $matches[3] ) ? ' data-required="1"' : '' );
+							
+							$required = ( $input['required'] ? ' data-required="1"' : '' );
+							$label = $input['label'];
+							$placeholder = $input['placeholder'];
 
-							$label = null;
 							if ( $named_parameters['type'] != 'inputs responsive' ) {
-								$label = trim( $matches[1] );
-								if ( empty( $label ) && $required && $labels > $placeholders ) {
-									$label = wfMessage( 'ci-forms-field-required' )->text();
-								}
-
-								if ( !empty( $label ) ) {
-									$replacement .= '<label>' . $label . ( $required ? '<span class="ci_form_required_symbol" aria-hidden="true">&nbsp;*</span>' : '' ) . '</label>';
-								} elseif ( $label_exists ) {
+								 if ( empty( $label ) && $input['required'] && $labels > $placeholders && !$required_rendered ) {
+									$required_rendered = true;
+									$replacement .= '<label>(' . wfMessage( 'ci-forms-field-required' )->text() . $required_html . ')</label>';
+								} elseif ( !empty( $label ) ) {
+								//if ( !empty( $label ) ) {
+									$replacement .= '<label>' . $label . ( $required ? $required_html : '' ) . '</label>';
+								} elseif ( $parsed_row['has_labels'] ) {
 									// Zero-width space
 									$replacement .= '<label>&#8203;</label>';
 								}
 							}
 
 							if ( $named_parameters['type'] != 'inputs responsive' || $inputs_per_row > 1 ) {
-								if ( empty( $label ) && $required ) {
+								if ( empty( $label ) && $input['required'] && !$required_rendered ) {
 									// @phan-suppress-next-line PhanRedundantCondition
 									$placeholder .= ( !empty( $placeholder ) ? '' : wfMessage( 'ci-forms-field-required' )->text() ) . ' *';
 								}
 							}
+
+							$input_type = $input['input_type'];
+							$input_options = $input['input_options'];
 
 							$replacement .= '<div class="ci_form_section_inputs_inner_col_input_container" style="width:' . ( $named_parameters['type'] == 'inputs' || $inputs_per_row > 1 ? '100%' : 'auto' ) . '">';
 							switch ( $input_type ) {
 								case 'textarea':
 									// '_value' is appended for easy validation
 									$replacement .= '<textarea rows="4" name="' . $unique_id .
-										'_items_' . $n . '_input_' . $i . '_value"' .
+										'_items_' . $key . '_input_' . $i . '_value"' .
 										( $input_options && is_numeric( $input_options ) ? ' maxlength="' . $input_options . '"' : '' ) .
 										( !empty( $placeholder ) ? ' placeholder="' .
 											htmlspecialchars( $placeholder ) . '"' : '' ) .
@@ -558,7 +606,7 @@ class CIForms {
 									$id_tmp = uniqid();
 									$select_options = str_replace( '\\,', $id_tmp, $input_options );
 									$select_options = preg_split( "/\s*,\s*/", $select_options, -1, PREG_SPLIT_NO_EMPTY );
-									$replacement .= '<select name="' . $unique_id . '_items_' . $n .
+									$replacement .= '<select name="' . $unique_id . '_items_' . $key .
 										'_input_' . $i . '_value" type="' . $input_type . '"' .
 										$required . '>';
 									if ( !empty( $placeholder ) ) {
@@ -584,7 +632,7 @@ class CIForms {
 								case 'text':
 								case 'email':
 									// '_value' is appended for easy validation
-									$replacement .= '<input name="' . $unique_id . '_items_' . $n .
+									$replacement .= '<input name="' . $unique_id . '_items_' . $key .
 										'_input_' . $i . '_value" type="' . $input_type . '"' .
 										( $placeholder ? ' placeholder="' .
 											htmlspecialchars( $placeholder ) . '"' : '' ) .
@@ -604,7 +652,6 @@ class CIForms {
 						$output .= '</div>';
 					}
 					$output .= '</div>';
-					$n++;
 				}
 				break;
 			case 'multiple choice':
