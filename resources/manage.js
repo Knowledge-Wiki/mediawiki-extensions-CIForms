@@ -33,7 +33,6 @@ $(document).ready(function () {
 			window.location.assign(href.replace("format=csv", "format=" + data));
 		});
 
-		buttonMenu.getMenu().setIdealSize();
 		$buttonExport.replaceWith(panelLayout.$element.append(buttonMenu.$element));
 	});
 });
