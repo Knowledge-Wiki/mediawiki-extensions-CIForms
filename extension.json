@@ -54,6 +54,40 @@
 				"mobile"
 			]
 		},
+		"ext.CIForms.manage": {
+			"scripts": [
+				"manage.js"
+			],
+			"dependencies": [
+				"oojs-ui.styles.icons-layout",
+				"oojs-ui-widgets"
+			],
+			"messages": [
+				"ci-forms-manage-pager-button-export",
+				"ci-forms-manage-pager-button-export-csv",
+				"ci-forms-manage-pager-button-export-excel"
+			],
+			"targets": [
+				"desktop",
+				"mobile"
+			]
+		},
+		"ext.CIForms.validation": {
+			"scripts": [
+				"validation.js"
+			],
+			"dependencies": [
+				"jquery",
+				"ext.CIForms.select2"
+			],
+			"styles": [
+				"style.css"
+			],
+			"targets": [
+				"desktop",
+				"mobile"
+			]
+		},
 		"ext.CIForms.select2": {
 			"scripts": [
 				"select2/select2.full.js"

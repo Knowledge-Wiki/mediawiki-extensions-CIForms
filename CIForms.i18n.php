@@ -26,3 +26,13 @@ $magicWords['en'] = [
 	'ci_form_section' => [ 0, 'ci_form_section', 'ci form section' ],
 	'ci_form' => [ 0, 'ci_form', 'ci form' ]
 ];
+
+$magicWords['de'] = [
+	'ci_form_section' => [ 0, 'ci_form_section', 'ci form section' ],
+	'ci_form' => [ 0, 'ci_form', 'ci form' ]
+];
+
+$magicWords['de-formal'] = [
+	'ci_form_section' => [ 0, 'ci_form_section', 'ci form section' ],
+	'ci_form' => [ 0, 'ci_form', 'ci form' ]
+];
