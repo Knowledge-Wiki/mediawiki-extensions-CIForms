@@ -60,7 +60,11 @@
 			],
 			"dependencies": [
 				"oojs-ui.styles.icons-layout",
+				"oojs-ui-core",
 				"oojs-ui-widgets"
+			],
+			"styles": [
+				"style-manage.css"
 			],
 			"messages": [
 				"ci-forms-manage-pager-button-export",
