@@ -22,11 +22,18 @@ $(document).ready(function () {
 			},
 		});
 
+		var panelLayout = new OO.ui.PanelLayout({
+			padded: false,
+			expanded: false,
+			classes: ["ci-forms-manage-pager-panel-layout"],
+		});
+
 		buttonMenu.getMenu().on("choose", function (menuOption) {
 			var data = menuOption.getData();
 			window.location.assign(href.replace("format=csv", "format=" + data));
 		});
 
-		$buttonExport.replaceWith(buttonMenu.$element);
+		buttonMenu.getMenu().setIdealSize();
+		$buttonExport.replaceWith(panelLayout.$element.append(buttonMenu.$element));
 	});
 });
