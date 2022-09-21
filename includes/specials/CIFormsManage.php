@@ -28,10 +28,7 @@ if ( is_readable( __DIR__ . '/../../vendor/autoload.php' ) ) {
 }
 
 use MediaWiki\MediaWikiServices;
-use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
-use PhpOffice\PhpSpreadsheet\Worksheet\Table;
-use PhpOffice\PhpSpreadsheet\Worksheet\Table\TableStyle;
 use Wikimedia\Rdbms\FakeResultWrapper;
 use Wikimedia\Rdbms\IDatabase;
 use Wikimedia\Rdbms\IResultWrapper;
@@ -863,26 +860,14 @@ AND title = ' . $dbr->addQuotes( $this->form_title )
 						// @see https://gerrit.wikimedia.org/r/plugins/gitiles/oojs/ui/+/refs/heads/master/demos/pages/widgets.js
 						) . new OOUI\ButtonWidget(
 							[
-								"classes" => [ "ciforms-manage-button-export" ],
-								"icon" => 'menu',
+								"classes" => [ ( class_exists( 'PhpOffice\PhpSpreadsheet\Spreadsheet' ) ? "ciforms-manage-button-export" : "" ) ],
+								"icon" => ( class_exists( 'PhpOffice\PhpSpreadsheet\Spreadsheet' ) ? 'menu' : null ),
 								'href' => wfAppendQuery( $url, 'export=' . $result['id'] . '&format=csv' ),
 								'label' => $this->msg( 'ci-forms-manage-pager-button-export' )->text(),
 								'infusable' => true,
 								'flags' => [ 'progressive', 'primary' ]
 							]
-						)
-
-/*
-				 . new OOUI\ButtonWidget(
-							[
-								'href' => wfAppendQuery( $url, 'export=' . $result['id'] . '&format=excel' ),
-								'label' => $this->msg( 'ci-forms-manage-pager-button-export-excel' )->text(),
-								'infusable' => true,
-								'flags' => [ 'progressive', 'primary' ]
-							]
-						)
-*/
-						;
+						);
 						break;
 					default:
 						$formatted = $result[$key];
