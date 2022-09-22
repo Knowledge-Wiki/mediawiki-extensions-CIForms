@@ -76,6 +76,9 @@ class CIForms {
 		$categories = $title->getParentCategories();
 		$indicators = $outputPage->getIndicators();
 
+		// @todo use an alternate way
+		$outputPage->setIndicators( ['ciform' => null ] );
+
 		if ( !empty( $indicators['ciform'] )
 			// back-compatibility
 			|| array_key_exists( 'Category:Pages_with_forms', $categories ) ) {
@@ -564,7 +567,7 @@ class CIForms {
 							$placeholder = $input['placeholder'];
 
 							if ( $named_parameters['type'] != 'inputs responsive' ) {
-								 if ( empty( $label ) && $input['required'] && $labels > $placeholders && !$required_rendered ) {
+								if ( empty( $label ) && $input['required'] && $labels > $placeholders && !$required_rendered ) {
 									$required_rendered = true;
 									$replacement .= '<label>(' . wfMessage( 'ci-forms-field-required' )->text() . $required_html . ')</label>';
 								} elseif ( !empty( $label ) ) {
