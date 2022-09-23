@@ -27,7 +27,7 @@
 	"Hooks": {
 		"LoadExtensionSchemaUpdates": "CIForms::onLoadExtensionSchemaUpdates",
 		"ParserFirstCallInit": "CIForms::onParserFirstCallInit",
-		"BeforePageDisplay": "CIForms::onBeforePageDisplay"
+		"OutputPageParserOutput": "CIForms::onOutputPageParserOutput"
 	},
 	"ResourceFileModulePaths": {
 		"localBasePath": "resources",
