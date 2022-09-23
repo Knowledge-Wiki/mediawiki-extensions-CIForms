@@ -63,9 +63,10 @@ class CIForms {
 
 	/**
 	 * @param OutputPage $outputPage
-	 * @param Skin $skin
+	 * @param ParserOutput $parserOutput
 	 */
-	public static function onBeforePageDisplay( OutputPage $outputPage, Skin $skin ) {
+	public static function onOutputPageParserOutput( OutputPage $outputPage, ParserOutput $parserOutput ) {
+		// @todo, use "messages" in extension.json and mw.msg() client side
 		$outputPage->addJsConfigVars( [
 			'ci-forms-validation-msg1' => wfMessage( 'ci-forms-validation-msg1' )->text(),
 			'ci-forms-validation-msg2' => wfMessage( 'ci-forms-validation-msg2' )->text(),
@@ -74,12 +75,8 @@ class CIForms {
 
 		$title = $outputPage->getTitle();
 		$categories = $title->getParentCategories();
-		$indicators = $outputPage->getIndicators();
 
-		// @todo use an alternate way
-		$outputPage->setIndicators( ['ciform' => null ] );
-
-		if ( !empty( $indicators['ciform'] )
+		if ( $parserOutput->getFlag( 'ciform' )
 			// back-compatibility
 			|| array_key_exists( 'Category:Pages_with_forms', $categories ) ) {
 
@@ -155,7 +152,7 @@ class CIForms {
 	 * @return array
 	 */
 	public static function ci_form( Parser $parser, ...$argv ) {
-		$parser->getOutput()->setIndicator( 'ciform', '1' );
+		$parser->getOutput()->setFlag( 'ciform' );
 		$title = $parser->getTitle();
 
 		$named_parameters = [
