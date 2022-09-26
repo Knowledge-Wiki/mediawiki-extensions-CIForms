@@ -596,7 +596,7 @@ class CIForms {
 										( !empty( $placeholder ) ? ' placeholder="' .
 											htmlspecialchars( $placeholder ) . '"' : '' ) .
 										$required . '></textarea>' .
-										( $input_options && is_numeric( $input_options ) ? '<span class="ci_form_section_inputs_textarea_maxlength">0/' . $input_options . ' characters</span>' : '' );
+										( $input_options && is_numeric( $input_options ) ? '<span class="ci_form_section_inputs_textarea_maxlength">0/' . $input_options . ' ' . wfMessage( 'ci-forms-textarea-maxlength-characters' )->text() .'</span>' : '' );
 									break;
 								case 'select':
 									// *** this could be replaced with any symbol
