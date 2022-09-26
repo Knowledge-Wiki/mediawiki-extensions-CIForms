@@ -6,6 +6,7 @@
 	"ciformssubmit": "Form submission",
 	"ci-forms-submit": "Submit",
 	"ci-forms-field-required": "required",
+	"ci-forms-textarea-maxlength-characters": "characters",
 	"ci-forms-navigation-next": "next",
 	"ci-forms-navigation-back": "back",
 	"ci-forms-validation-msg1": "maximum $1 choices",
